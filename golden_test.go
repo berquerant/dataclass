@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"go/format"
 	"strings"
 	"testing"
@@ -8,13 +9,56 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type goldenTestcase struct {
+	title      string
+	typeName   string
+	fieldNames string
+	output     string
+}
+
+func (tc *goldenTestcase) test(t *testing.T) {
+	g := newGenerator(tc.typeName)
+	g.parseFields(tc.fieldNames)
+	g.generate()
+	got, err := format.Source(g.bytes())
+	assert.Nil(t, err, "err=%#v, got=%s", err, string(g.bytes()))
+	want, err := format.Source([]byte(tc.output))
+	assert.Nil(t, err, "want")
+	assert.Equal(t, strings.TrimRight(string(want), "\n"), strings.TrimRight(string(got), "\n"))
+}
+
 func TestGolden(t *testing.T) {
-	for _, tc := range []*struct {
-		title      string
-		typeName   string
-		fieldNames string
-		output     string
-	}{
+	simpleTestcaseTypeNames := []string{
+		"int",
+		"string",
+		"[]int",
+		"[1]int",
+		"map[string]int",
+		"chan string",
+		"chan<- string",
+		"<-chan string",
+		"func()",
+		"[][]int",
+		"[]map[string]int",
+		"map[string][]int",
+		"chan []int",
+		"func() error",
+		"func(int)",
+		"func(int) error",
+		"func(int) (string, error)",
+		"func(int, string) (map[string]int, error)",
+		"*int",
+		"*[]int",
+		"flag.ErrorHandler",
+		"chan chan map[string]int",
+	}
+
+	simpleTestcases := make([]goldenTestcase, len(simpleTestcaseTypeNames))
+	for i, typeName := range simpleTestcaseTypeNames {
+		simpleTestcases[i] = generateSimpleGoldenTestcase(typeName)
+	}
+
+	compositeTestcases := []goldenTestcase{
 		{
 			title:      "one_method",
 			typeName:   "OneType",
@@ -56,7 +100,7 @@ func NewPointerType(
 		{
 			title:      "two_types",
 			typeName:   "TwoType",
-			fieldNames: "First *http.Request,Second string",
+			fieldNames: "First *http.Request|Second string",
 			output: `type TwoType interface{
   First() *http.Request
   Second() string
@@ -77,17 +121,35 @@ func NewTwoType(
   }
 }`,
 		},
-	} {
-		tc := tc
-		t.Run(tc.title, func(t *testing.T) {
-			g := newGenerator(tc.typeName)
-			g.parseFields(tc.fieldNames)
-			g.generate()
-			got, err := format.Source(g.bytes())
-			assert.Nil(t, err, "err=%#v, got=%s", err, string(g.bytes()))
-			want, err := format.Source([]byte(tc.output))
-			assert.Nil(t, err, "want")
-			assert.Equal(t, strings.TrimRight(string(want), "\n"), strings.TrimRight(string(got), "\n"))
-		})
+	}
+
+	testcases := append(simpleTestcases, compositeTestcases...)
+
+	for _, tc := range testcases {
+		tc.test(t)
 	}
 }
+
+func generateSimpleGoldenTestcase(fieldTypeName string) goldenTestcase {
+	return goldenTestcase{
+		title:      fieldTypeName,
+		typeName:   "OneType",
+		fieldNames: fmt.Sprintf("V %s", fieldTypeName),
+		output:     fmt.Sprintf(simpleGoldenTestWantTemplate, fieldTypeName),
+	}
+}
+
+const simpleGoldenTestWantTemplate = `type OneType interface{
+  V() %[1]s
+}
+type oneType struct{
+  v %[1]s
+}
+func (s *oneType) V() %[1]s { return s.v }
+func NewOneType(
+  v %[1]s,
+) OneType {
+  return &oneType{
+    v: v,
+  }
+}`

@@ -15,7 +15,7 @@ import (
 
 var (
 	typeName   = flag.String("type", "", "interface name; must be set")
-	fieldNames = flag.String("field", "", "comma-separated list of field names; must be set")
+	fieldNames = flag.String("field", "", "list of field names separated by '|'; must be set")
 	goImports  = flag.String("goimports", "goimports", "goimports executable")
 	output     = flag.String("output", "", "output file name; default srcdir/dataclass.go")
 )
@@ -145,8 +145,8 @@ func (g *generator) parseFields(fieldNameString string) {
 		fields       []*rawField
 		fieldNameSet = map[string]bool{}
 	)
-	for _, s := range strings.Split(fieldNameString, ",") {
-		xs := strings.Split(s, " ")
+	for _, s := range strings.Split(fieldNameString, "|") {
+		xs := strings.SplitN(s, " ", 2)
 		if len(xs) != 2 {
 			log.Panicf("invalid field: %s", s)
 		}
