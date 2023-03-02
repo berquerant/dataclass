@@ -13,13 +13,6 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var (
-	typeName   = flag.String("type", "", "interface name; must be set")
-	fieldNames = flag.String("field", "", "list of field names separated by '|'; must be set")
-	goImports  = flag.String("goimports", "goimports", "goimports executable")
-	output     = flag.String("output", "", "output file name; default srcdir/dataclass.go")
-)
-
 const usage = `Usage of dataclass:
   dataclass [flags] -type T -field F
 
@@ -33,12 +26,20 @@ func Usage() {
 }
 
 func main() {
+	var (
+		typeName   = flag.String("type", "", "interface name; must be set")
+		fieldNames = flag.String("field", "", "list of field names separated by '|'; must be set")
+		goImports  = flag.String("goimports", "goimports", "goimports executable")
+		output     = flag.String("output", "", "output file name; default srcdir/dataclass.go")
+	)
+
 	log.SetFlags(0)
 	log.SetPrefix("dataclass: ")
 	flag.Usage = Usage
 	flag.Parse()
+	args := flag.Args()
 
-	validateTypeName()
+	validateTypeName(*typeName)
 
 	g := newGenerator(*typeName)
 	g.parsePackage(flag.Args())
@@ -49,29 +50,29 @@ func main() {
 
 	g.generate()
 
+	writeResult := func(src []byte) error { return os.WriteFile(destFilename(*output, args), src, 0600) }
+
 	if err := writeResult(g.bytes()); err != nil {
 		log.Panicf("write file %v", err)
 	}
 	gi := &goImporter{
 		goImports:  *goImports,
-		targetFile: destFilename(),
+		targetFile: destFilename(*output, args),
 	}
+
 	if err := gi.doImport(); err != nil {
 		log.Panicf("goimports %v", err)
 	}
 }
 
-func writeResult(src []byte) error { return os.WriteFile(destFilename(), src, 0600) }
-
-func destFilename() string {
-	if *output != "" {
-		return *output
+func destFilename(output string, args []string) string {
+	if output != "" {
+		return output
 	}
-	return filepath.Join(destDir(), "dataclass.go")
+	return filepath.Join(destDir(args), "dataclass.go")
 }
 
-func destDir() string {
-	args := flag.Args()
+func destDir(args []string) string {
 	if len(args) == 0 {
 		args = []string{"."}
 	}
@@ -89,12 +90,12 @@ func isDirectory(p string) bool {
 	return x.IsDir()
 }
 
-func validateTypeName() {
-	if *typeName == "" {
+func validateTypeName(typeName string) {
+	if typeName == "" {
 		log.Panic("type must be set")
 	}
-	if capitalize(*typeName) != *typeName {
-		log.Panicf("type must be public: %s", *typeName)
+	if capitalize(typeName) != typeName {
+		log.Panicf("type must be public: %s", typeName)
 	}
 }
 
