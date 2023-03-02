@@ -9,7 +9,7 @@ package example
 // ...
 ```
 
-run `dataclass -type Argument -field "Size int,Handler flag.ErrorHandling,Target string"` then generate
+run `dataclass -type Argument -field "Size int|Handler flag.ErrorHandling|Target string"` then generate
 
 ``` go
 package example
