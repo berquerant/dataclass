@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"go/parser"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -18,6 +20,13 @@ const usage = `Usage of dataclass:
 
 T is the interface name.
 F is the list of "fieldName typeName".
+
+Environment variables:
+  DATACLASS_DEBUG
+    If set, enable debug logs.
+  DATACLASS_STDOUT
+    If set, write result to stdout.
+
 Flags:`
 
 func Usage() {
@@ -25,19 +34,27 @@ func Usage() {
 	flag.PrintDefaults()
 }
 
+var debugf = func(format string, v ...any) {}
+
 func main() {
 	var (
 		typeName   = flag.String("type", "", "interface name; must be set")
 		fieldNames = flag.String("field", "", "list of field names separated by '|'; must be set")
 		goImports  = flag.String("goimports", "goimports", "goimports executable")
 		output     = flag.String("output", "", "output file name; default srcdir/dataclass.go")
+
+		redirectToStdout = os.Getenv("DATACLASS_STDOUT") != ""
+		debug            = os.Getenv("DATACLASS_DEBUG") != ""
 	)
+
+	if debug {
+		debugf = log.Printf
+	}
 
 	log.SetFlags(0)
 	log.SetPrefix("dataclass: ")
 	flag.Usage = Usage
 	flag.Parse()
-	args := flag.Args()
 
 	validateTypeName(*typeName)
 
@@ -50,19 +67,53 @@ func main() {
 
 	g.generate()
 
-	writeResult := func(src []byte) error { return os.WriteFile(destFilename(*output, args), src, 0600) }
+	writeResult := func(src []byte, args []string) error {
+		if redirectToStdout {
+			return writeResultToStdout(src, *goImports)
+		}
+		return writeResultToDestfile(src, *output, args, *goImports)
+	}
 
-	if err := writeResult(g.bytes()); err != nil {
-		log.Panicf("write file %v", err)
+	if err := writeResult(g.bytes(), flag.Args()); err != nil {
+		log.Panic(err)
+	}
+}
+
+func writeResultToDestfile(src []byte, output string, args []string, goImports string) error {
+	return writeResultAndFormat(src, destFilename(output, args), goImports)
+}
+
+func writeResultToStdout(src []byte, goImports string) error {
+	f, err := os.CreateTemp("", "dataclass")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(f.Name())
+
+	if err := writeResultAndFormat(src, f.Name(), goImports); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, os.SEEK_SET); err != nil {
+		return err
+	}
+	if _, err := io.Copy(os.Stdout, f); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeResultAndFormat(src []byte, fileName, goImports string) error {
+	if err := os.WriteFile(fileName, src, 0600); err != nil {
+		return fmt.Errorf("failed to write to %s: %w", fileName, err)
 	}
 	gi := &goImporter{
-		goImports:  *goImports,
-		targetFile: destFilename(*output, args),
+		goImports:  goImports,
+		targetFile: fileName,
 	}
-
 	if err := gi.doImport(); err != nil {
-		log.Panicf("goimports %v", err)
+		return fmt.Errorf("failed to goimport: %w", err)
 	}
+	return nil
 }
 
 func destFilename(output string, args []string) string {
@@ -146,7 +197,8 @@ func (g *generator) parseFields(fieldNameString string) {
 		fields       []*rawField
 		fieldNameSet = map[string]bool{}
 	)
-	for _, s := range strings.Split(fieldNameString, "|") {
+	for i, s := range strings.Split(fieldNameString, "|") {
+		debugf("Parse field[%d]: %s", i, s)
 		xs := strings.SplitN(s, " ", 2)
 		if len(xs) != 2 {
 			log.Panicf("invalid field: %s", s)
@@ -158,10 +210,12 @@ func (g *generator) parseFields(fieldNameString string) {
 			log.Panicf("invalid field name: %s", name)
 		}
 		typeName := xs[1]
-		// cannot contain spaces
-		if strings.TrimSpace(typeName) != typeName {
-			log.Panicf("invalid field type: %s", typeName)
+		// validate typename
+		if _, err := parser.ParseExpr(typeName); err != nil {
+			log.Panicf("failed to parse field %s: %v", s, err)
 		}
+
+		debugf("Parse field[%d]: %s -> name = %s typeName = %s", i, s, name, typeName)
 		fields = append(fields, &rawField{
 			name:     name,
 			typeName: typeName,
