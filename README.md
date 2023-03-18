@@ -44,7 +44,3 @@ func NewArgument(
 ```
 
 in dataclass.go in the same directory.
-
-# Requirements
-
-- [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports)

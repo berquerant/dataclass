@@ -38,11 +38,9 @@ var debugf = func(format string, v ...any) {}
 
 func main() {
 	var (
-		typeName   = flag.String("type", "", "interface name; must be set")
-		fieldNames = flag.String("field", "", "list of field names separated by '|'; must be set")
-		goImports  = flag.String("goimports", "goimports", "goimports executable")
-		output     = flag.String("output", "", "output file name; default srcdir/dataclass.go")
-
+		typeName         = flag.String("type", "", "interface name; must be set")
+		fieldNames       = flag.String("field", "", "list of field names separated by '|'; must be set")
+		output           = flag.String("output", "", "output file name; default srcdir/dataclass.go")
 		redirectToStdout = os.Getenv("DATACLASS_STDOUT") != ""
 		debug            = os.Getenv("DATACLASS_DEBUG") != ""
 	)
@@ -69,9 +67,9 @@ func main() {
 
 	writeResult := func(src []byte, args []string) error {
 		if redirectToStdout {
-			return writeResultToStdout(src, *goImports)
+			return writeResultToStdout(src)
 		}
-		return writeResultToDestfile(src, *output, args, *goImports)
+		return writeResultToDestfile(src, *output, args)
 	}
 
 	if err := writeResult(g.bytes(), flag.Args()); err != nil {
@@ -79,18 +77,18 @@ func main() {
 	}
 }
 
-func writeResultToDestfile(src []byte, output string, args []string, goImports string) error {
-	return writeResultAndFormat(src, destFilename(output, args), goImports)
+func writeResultToDestfile(src []byte, output string, args []string) error {
+	return writeResultAndFormat(src, destFilename(output, args))
 }
 
-func writeResultToStdout(src []byte, goImports string) error {
+func writeResultToStdout(src []byte) error {
 	f, err := os.CreateTemp("", "dataclass")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(f.Name())
 
-	if err := writeResultAndFormat(src, f.Name(), goImports); err != nil {
+	if err := writeResultAndFormat(src, f.Name()); err != nil {
 		return err
 	}
 	if _, err := f.Seek(0, os.SEEK_SET); err != nil {
@@ -102,15 +100,13 @@ func writeResultToStdout(src []byte, goImports string) error {
 	return nil
 }
 
-func writeResultAndFormat(src []byte, fileName, goImports string) error {
+func writeResultAndFormat(src []byte, fileName string) error {
 	if err := os.WriteFile(fileName, src, 0600); err != nil {
 		return fmt.Errorf("failed to write to %s: %w", fileName, err)
 	}
-	gi := &goImporter{
-		goImports:  goImports,
-		targetFile: fileName,
-	}
-	if err := gi.doImport(); err != nil {
+	cmd := exec.Command("go", "run", "golang.org/x/tools/cmd/goimports@v0.7.0", "-w", fileName)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to goimport: %w", err)
 	}
 	return nil
@@ -148,17 +144,6 @@ func validateTypeName(typeName string) {
 	if capitalize(typeName) != typeName {
 		log.Panicf("type must be public: %s", typeName)
 	}
-}
-
-type goImporter struct {
-	goImports  string
-	targetFile string
-}
-
-func (s *goImporter) doImport() error {
-	cmd := exec.Command(s.goImports, "-w", s.targetFile)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 type generator struct {
