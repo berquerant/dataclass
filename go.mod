@@ -3,7 +3,7 @@ module github.com/berquerant/dataclass
 go 1.19
 
 require (
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.8.3
 	golang.org/x/tools v0.8.0
 )
 
