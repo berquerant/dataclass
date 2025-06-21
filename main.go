@@ -162,6 +162,7 @@ func newGenerator(ifaceType string) *generator {
 }
 
 func (g *generator) printf(format string, v ...any) { fmt.Fprintf(&g.buf, format, v...) }
+func (g *generator) print(v string)                 { fmt.Fprint(&g.buf, v) }
 func (g *generator) bytes() []byte                  { return g.buf.Bytes() }
 
 func (g *generator) parsePackage(patterns []string) {
@@ -228,16 +229,19 @@ func (g *generator) generate() {
 		it.add(rf.name, rf.typeName)
 		st.add(rf.name, rf.typeName)
 	}
-	g.printf(it.generate())
-	g.printf(st.generate(g.ifaceType))
+	g.print(it.generate())
+	g.print(st.generate(g.ifaceType))
 }
 
 type stringBuilder struct {
 	strings.Builder
 }
 
-func (s *stringBuilder) write(format string, v ...any) {
+func (s *stringBuilder) writef(format string, v ...any) {
 	s.WriteString(fmt.Sprintf("%s\n", fmt.Sprintf(format, v...)))
+}
+func (s *stringBuilder) write(v string) {
+	s.WriteString(fmt.Sprintf("%s\n", v))
 }
 
 func capitalize(v string) string {
@@ -261,7 +265,7 @@ func newIfaceType(name string) *ifaceType {
 
 func (it *ifaceType) generate() string {
 	var b stringBuilder
-	b.write("type %s interface {", it.name)
+	b.writef("type %s interface {", it.name)
 	for _, m := range it.methodList {
 		b.write(m.generate())
 	}
@@ -309,7 +313,7 @@ func (st *structType) add(itemName, itemType string) {
 
 func (st *structType) generate(ifaceType string) string {
 	var b stringBuilder
-	b.write("type %s struct {", st.name)
+	b.writef("type %s struct {", st.name)
 	for _, f := range st.fieldList {
 		b.write(f.generate())
 	}
@@ -323,14 +327,14 @@ func (st *structType) generate(ifaceType string) string {
 
 func (st *structType) generateConstructor(ifaceType string) string {
 	var b stringBuilder
-	b.write("func New%s(", ifaceType)
+	b.writef("func New%s(", ifaceType)
 	for _, f := range st.fieldList {
-		b.write("%s %s,", f.name, f.typeName)
+		b.writef("%s %s,", f.name, f.typeName)
 	}
-	b.write(") %s {", ifaceType)
-	b.write("return &%s{", st.name)
+	b.writef(") %s {", ifaceType)
+	b.writef("return &%s{", st.name)
 	for _, f := range st.fieldList {
-		b.write("%[1]s: %[1]s,", f.name)
+		b.writef("%[1]s: %[1]s,", f.name)
 	}
 	b.write("}") // struct
 	b.write("}") // func
