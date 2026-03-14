@@ -57,7 +57,6 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	for i, typeName := range simpleTestcaseTypeNames {
-		i := i
 		tc, err := generateSimpleEndToEndTestcase(
 			testdataDir,
 			fmt.Sprintf("simple_%d", i),
@@ -82,8 +81,6 @@ func TestEndToEnd(t *testing.T) {
 	}
 
 	for i, tc := range compositeTestcases {
-		i := i
-		tc := tc
 		t.Run(tc.title, func(t *testing.T) {
 			d.compileAndRun(
 				t,
